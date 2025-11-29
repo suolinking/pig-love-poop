@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pig Love Poop - 安全模式</title>
+    <title>Pig Love Poop - 修复版</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -16,10 +16,16 @@
         #game-container {
             position: relative; width: 100vw; height: 100vh;
             display: flex; justify-content: center; align-items: center;
-            background: #000; overflow: hidden;
+            /* 强制背景色：如果是黑屏，这里会变成深蓝，证明HTML没问题 */
+            background: #1a1a2e; 
+            overflow: hidden;
         }
 
-        canvas { width: 100%; height: 100%; object-fit: contain; }
+        canvas {
+            width: 100%; height: 100%; object-fit: contain;
+            /* 给画布一个默认底色，防止全黑 */
+            background-color: #2c3e50;
+        }
 
         /* UI */
         .ui-layer {
@@ -27,392 +33,396 @@
             pointer-events: none; padding: 20px; box-sizing: border-box;
             display: flex; flex-direction: column; justify-content: space-between; z-index: 10;
         }
-        .header { display: flex; justify-content: space-between; width: 100%; }
+        .header { display: flex; justify-content: space-between; width: 100%; align-items: flex-start; }
         .score-box {
             background: rgba(255,255,255,0.9); border: 4px solid #ff9ff3; border-radius: 15px;
-            padding: 10px 20px; text-align: center; min-width: 100px;
+            padding: 10px 20px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
-        .score-val { font-size: 32px; color: #333; line-height: 1; }
+        .score-val { font-size: 32px; color: #2d3436; line-height: 1; }
         .level-val { font-size: 14px; color: #666; }
         
-        .xp-bar {
-            width: 100%; height: 10px; background: rgba(0,0,0,0.5);
-            position: absolute; bottom: 0; left: 0;
+        .xp-bar-container {
+            width: 100%; height: 12px; background: rgba(0,0,0,0.5);
+            position: absolute; bottom: 0; left: 0; border-top: 2px solid rgba(255,255,255,0.3);
         }
-        .xp-fill { height: 100%; width: 0%; background: #f1c40f; transition: width 0.2s; }
+        .xp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #f1c40f, #e67e22); transition: width 0.2s; }
 
         /* 启动页 */
         #start-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #1a1a1a 0%, #000000 100%);
+            background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             z-index: 100; transition: opacity 0.5s;
         }
-        h1 { color: white; font-size: 4rem; text-align: center; margin-bottom: 20px; text-shadow: 0 0 10px #ff9ff3; }
+        h1 { font-size: 5rem; color: white; margin: 0; text-shadow: 0 0 20px #ff9ff3; z-index: 2; text-align: center; }
         .btn-start {
-            background: transparent; color: white; border: 2px solid white;
-            padding: 15px 60px; font-size: 1.5rem; border-radius: 50px; cursor: pointer;
+            margin-top: 50px; background: transparent; color: white; border: 2px solid white;
+            padding: 15px 60px; font-size: 1.5rem; cursor: pointer; z-index: 2; border-radius: 50px;
         }
         .btn-start:hover { background: white; color: black; }
+        #loading-text { margin-top: 20px; color: #888; font-size: 14px; }
 
-        /* 调试信息 (如果有问题能看到) */
-        #debug-info {
-            position: absolute; top: 60px; left: 20px; color: #0f0; font-size: 12px;
-            font-family: monospace; background: rgba(0,0,0,0.7); padding: 5px;
-            pointer-events: none; z-index: 20; max-width: 300px;
-        }
-
+        /* 提示 */
         #toast {
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%) scale(0);
-            background: #ff9ff3; padding: 15px 30px; border-radius: 30px;
-            color: white; font-size: 24px; border: 4px solid #fff;
-            opacity: 0; transition: all 0.4s; z-index: 20; text-align: center;
+            background: linear-gradient(135deg, #ff9ff3, #feca57); padding: 15px 30px; border-radius: 30px;
+            color: white; font-size: 24px; border: 4px solid #fff; opacity: 0; transition: all 0.4s; z-index: 20;
+            text-align: center; white-space: nowrap;
         }
         #toast.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+
     </style>
 </head>
 <body>
 
-<div id="game-container">
-    <canvas id="gameCanvas"></canvas>
-    <div id="debug-info">Debug Mode Active</div>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
 
-    <div class="ui-layer" id="uiLayer" style="opacity:0">
-        <div class="header">
-            <div class="score-box">
-                <div class="score-val" id="scoreVal">0</div>
-                <div class="level-val" id="levelVal">Lv.1</div>
+        <div class="ui-layer" id="uiLayer" style="opacity:0">
+            <div class="header">
+                <div class="score-box">
+                    <div class="score-val" id="scoreVal">0</div>
+                    <div class="level-val" id="levelVal">Lv.1 农场</div>
+                </div>
             </div>
-            <!-- 音乐按钮 -->
-            <div style="pointer-events:auto; background:rgba(0,0,0,0.5); color:white; width:40px; height:40px; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer;" onclick="toggleMute()" id="muteBtn">🔊</div>
+            <div class="xp-bar-container">
+                <div class="xp-fill" id="xpFill"></div>
+            </div>
         </div>
-        <div class="xp-bar">
-            <div class="xp-fill" id="xpFill"></div>
+
+        <div id="toast">LEVEL UP!</div>
+
+        <div id="start-screen">
+            <h1>pig love poop</h1>
+            <button class="btn-start" id="startBtn" onclick="startGame()">LOADING...</button>
+            <div id="loading-text">正在加载资源...</div>
         </div>
     </div>
 
-    <div id="toast">LEVEL UP!</div>
+    <script>
+        // 1. 资源路径
+        const PATHS = {
+            pig:       "assets/pig.png",
+            poop:      "assets/poop.png",
+            bg_farm:   "assets/bg_farm.png",
+            bg_road:   "assets/bg_road.png",
+            bg_bikini: "assets/bg_bikini.png",
+            bg_cotton: "assets/bg_cotton.png",
+            bg_moon:   "assets/bg_moon.png",
+            music_1:   "assets/music_1.mp3",
+            music_2:   "assets/music_2.mp3"
+        };
 
-    <div id="start-screen">
-        <h1>PIG LOVE POOP</h1>
-        <button class="btn-start" onclick="startGame()">START GAME</button>
-        <div style="color:#666; margin-top:10px; font-size:12px">v3.0 Safe Mode</div>
-    </div>
-</div>
+        // 2. 资源加载
+        const IMAGES = { bg: {} };
+        const AUDIO = { bgm1: null, bgm2: null, current: null };
+        let loadedCount = 0;
 
-<script>
-    // ================= 配置 =================
-    const PATHS = {
-        pig:       "assets/pig.png",
-        poop:      "assets/poop.png",
-        bg_farm:   "assets/bg_farm.png",
-        bg_road:   "assets/bg_road.png",
-        bg_bikini: "assets/bg_bikini.png",
-        bg_cotton: "assets/bg_cotton.png",
-        bg_moon:   "assets/bg_moon.png",
-        music_1:   "assets/music_1.mp3",
-        music_2:   "assets/music_2.mp3"
-    };
+        function checkLoad() {
+            loadedCount++;
+            document.getElementById('loading-text').innerText = `资源加载中 (${loadedCount})`;
+            // 加载一部分就允许开始，防止卡死
+            if(loadedCount >= 5) {
+                const btn = document.getElementById('startBtn');
+                btn.innerText = "START";
+                btn.onclick = startGame;
+            }
+        }
 
-    // 资源加载器
-    const IMAGES = {};
-    const AUDIO = { bgm1: null, bgm2: null, current: null, isMuted: false };
-    const debugEl = document.getElementById('debug-info');
+        // 图片加载器
+        function loadImg(src) {
+            const img = new Image();
+            img.onload = checkLoad;
+            img.onerror = () => { console.log("图片缺失:", src); checkLoad(); }; // 缺失也继续
+            img.src = src;
+            return img;
+        }
 
-    function log(msg) {
-        debugEl.innerHTML += msg + "<br>";
-        console.log(msg);
-    }
-
-    function loadImage(key, src) {
-        const img = new Image();
-        img.src = src;
-        img.onload = () => log(`✅ Loaded: ${key}`);
-        img.onerror = () => log(`❌ Failed: ${key} (${src})`);
-        return img;
-    }
-
-    // 初始化
-    function initAssets() {
-        log("--- 开始加载资源 ---");
-        IMAGES.pig = loadImage('pig', PATHS.pig);
-        IMAGES.poop = loadImage('poop', PATHS.poop);
+        IMAGES.pig = loadImg(PATHS.pig);
+        IMAGES.poop = loadImg(PATHS.poop);
         ['farm','road','bikini','cotton','moon'].forEach(k => {
-            IMAGES[k] = loadImage(k, PATHS['bg_'+k]);
+            IMAGES.bg[k] = loadImg(PATHS['bg_'+k]);
         });
 
         // 音频
         AUDIO.bgm1 = new Audio(PATHS.music_1); AUDIO.bgm1.loop = true;
         AUDIO.bgm2 = new Audio(PATHS.music_2); AUDIO.bgm2.loop = true;
-    }
-    initAssets();
 
-    // ================= 游戏逻辑 =================
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const G_W = 1920, G_H = 1080;
 
-    let state = {
-        active: false,
-        score: 0, level: 1, xp: 0, maxXp: 10,
-        rainMode: false, rainTimer: 0,
-        pig: { x: G_W/2, y: G_H/2, vx:0, vy:0, faceLeft:false, buffs:{} },
-        poops: [], particles: [],
-        keys: { w:false, a:false, s:false, d:false },
-        mouse: { x:null, y:null, active:false }
-    };
+        // 3. 游戏系统
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const G_W = 1920;
+        const G_HEIGHT = 1080;
 
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
+        let state = {
+            active: false,
+            score: 0, level: 1, xp: 0, maxXp: 10,
+            pig: { x: G_W/2, y: G_HEIGHT/2, vx:0, vy:0, faceLeft:false },
+            poops: [], particles: [],
+            keys: { w:false, a:false, s:false, d:false },
+            mouse: { x:0, y:0, active:false }
+        };
 
-    // 输入
-    window.addEventListener('keydown', e => state.keys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup', e => state.keys[e.key.toLowerCase()] = false);
-    canvas.addEventListener('pointerdown', e => { state.mouse.active=true; updateMouse(e); });
-    canvas.addEventListener('pointermove', e => { if(state.mouse.active) updateMouse(e); });
-    canvas.addEventListener('pointerup', () => state.mouse.active=false);
-
-    function updateMouse(e) {
-        let s = Math.min(canvas.width/G_W, canvas.height/G_H);
-        let dx = (canvas.width - G_W*s)/2;
-        let dy = (canvas.height - G_H*s)/2;
-        state.mouse.x = (e.clientX - dx)/s;
-        state.mouse.y = (e.clientY - dy)/s;
-    }
-
-    function playMusic(id) {
-        if(AUDIO.isMuted) return;
-        let target = id===1 ? AUDIO.bgm1 : AUDIO.bgm2;
-        let other = id===1 ? AUDIO.bgm2 : AUDIO.bgm1;
-        
-        if(AUDIO.current !== target) {
-            other.pause(); other.currentTime = 0;
-            target.play().catch(e => log("🎵 点击屏幕播放音乐"));
-            AUDIO.current = target;
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
-    }
+        window.addEventListener('resize', resize);
+        resize();
 
-    function toggleMute() {
-        AUDIO.isMuted = !AUDIO.isMuted;
-        document.getElementById('muteBtn').innerText = AUDIO.isMuted ? '🔇' : '🔊';
-        if(AUDIO.isMuted && AUDIO.current) AUDIO.current.pause();
-        else if(AUDIO.current) AUDIO.current.play();
-    }
-
-    function startGame() {
-        state.active = true;
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('uiLayer').style.opacity = 1;
-        playMusic(1);
-        loop();
-        spawner();
-        log("🚀 游戏开始!");
-    }
-
-    function loop() {
-        if(!state.active) return;
-        update();
-        draw();
-        requestAnimationFrame(loop);
-    }
-
-    function update() {
-        const scene = getScene();
+        window.addEventListener('keydown', e => state.keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => state.keys[e.key.toLowerCase()] = false);
         
-        // 猪移动
-        let speed = 12 + (state.level*0.5);
-        if(scene === 'moon') speed = 25;
-        if(state.pig.buffs.speed > 0) { speed *= 2; state.pig.buffs.speed--; }
+        // 触摸/鼠标支持
+        canvas.addEventListener('pointerdown', e => { state.mouse.active=true; updateMouse(e); playMusic(1); });
+        canvas.addEventListener('pointermove', e => { if(state.mouse.active) updateMouse(e); });
+        canvas.addEventListener('pointerup', () => state.mouse.active=false);
 
-        let ax=0, ay=0;
-        if(state.keys.w) ay = -1; if(state.keys.s) ay = 1;
-        if(state.keys.a) ax = -1; if(state.keys.d) ax = 1;
-        if(state.mouse.active) {
-            let ang = Math.atan2(state.mouse.y - state.pig.y, state.mouse.x - state.pig.x);
-            ax = Math.cos(ang); ay = Math.sin(ang);
+        function updateMouse(e) {
+            let s = Math.min(canvas.width/G_W, canvas.height/G_HEIGHT);
+            if(s === 0) s = 1; // 防止除以0
+            let dx = (canvas.width - G_W*s)/2;
+            let dy = (canvas.height - G_HEIGHT*s)/2;
+            state.mouse.x = (e.clientX - dx)/s;
+            state.mouse.y = (e.clientY - dy)/s;
         }
 
-        state.pig.vx += ax * 1.5; state.pig.vy += ay * 1.5;
-        state.pig.vx *= 0.9; state.pig.vy *= 0.9;
-        
-        let v = Math.hypot(state.pig.vx, state.pig.vy);
-        if(v > speed) { state.pig.vx = (state.pig.vx/v)*speed; state.pig.vy = (state.pig.vy/v)*speed; }
+        function playMusic(id) {
+            let target = id===1 ? AUDIO.bgm1 : AUDIO.bgm2;
+            let other = id===1 ? AUDIO.bgm2 : AUDIO.bgm1;
+            if(AUDIO.current !== target) {
+                other.pause(); other.currentTime = 0;
+                target.play().catch(e=>{});
+                AUDIO.current = target;
+            }
+        }
 
-        state.pig.x += state.pig.vx; state.pig.y += state.pig.vy;
-        // 边界
-        if(state.pig.x<50) state.pig.x=50; if(state.pig.x>G_W-50) state.pig.x=G_W-50;
-        if(state.pig.y<50) state.pig.y=50; if(state.pig.y>G_H-50) state.pig.y=G_H-50;
-        
-        if(state.pig.vx < -0.5) state.pig.faceLeft = false;
-        if(state.pig.vx > 0.5) state.pig.faceLeft = true;
+        function startGame() {
+            state.active = true;
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('uiLayer').style.opacity = 1;
+            playMusic(1);
+            loop();
+            spawner();
+        }
 
-        // 屎逻辑
-        if(state.rainMode) { state.rainTimer--; if(state.rainTimer<=0) state.rainMode=false; }
+        function loop() {
+            if(!state.active) return;
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
 
-        for(let i=state.poops.length-1; i>=0; i--) {
-            let p = state.poops[i];
-            if(p.scale < 1) p.scale += 0.05;
+        function update() {
+            // 1. 猪移动逻辑 (修复 NaN 问题)
+            let speed = 12 + (state.level * 0.5);
             
-            // 吸附
-            if(state.level >= 5 && p.type !== 'stinky' && p.type !== 'sticky') {
-                let d = Math.hypot(p.x - state.pig.x, p.y - state.pig.y);
-                if(d < 350) {
-                    p.x += (state.pig.x - p.x)*0.1; p.y += (state.pig.y - p.y)*0.1;
+            let ax=0, ay=0;
+            if(state.keys.w) ay = -1; if(state.keys.s) ay = 1;
+            if(state.keys.a) ax = -1; if(state.keys.d) ax = 1;
+            
+            if(state.mouse.active) {
+                let ang = Math.atan2(state.mouse.y - state.pig.y, state.mouse.x - state.pig.x);
+                ax = Math.cos(ang); ay = Math.sin(ang);
+            }
+
+            state.pig.vx += ax * 1.5;
+            state.pig.vy += ay * 1.5;
+            state.pig.vx *= 0.9; 
+            state.pig.vy *= 0.9;
+
+            // --- 关键修复：防止除以零导致的消失 ---
+            let v = Math.hypot(state.pig.vx, state.pig.vy);
+            if(v > speed) { 
+                state.pig.vx = (state.pig.vx/v)*speed; 
+                state.pig.vy = (state.pig.vy/v)*speed; 
+            }
+            
+            // --- 关键修复：NaN 检测 ---
+            if(isNaN(state.pig.x)) state.pig.x = G_W/2;
+            if(isNaN(state.pig.y)) state.pig.y = G_HEIGHT/2;
+
+            state.pig.x += state.pig.vx;
+            state.pig.y += state.pig.vy;
+
+            // 边界
+            if(state.pig.x < 50) state.pig.x = 50; 
+            if(state.pig.x > G_W-50) state.pig.x = G_W-50;
+            if(state.pig.y < 50) state.pig.y = 50; 
+            if(state.pig.y > G_HEIGHT-50) state.pig.y = G_HEIGHT-50;
+
+            if(state.pig.vx < -0.1) state.pig.faceLeft = false;
+            if(state.pig.vx > 0.1) state.pig.faceLeft = true;
+
+            // 2. 吃屎逻辑
+            for(let i=state.poops.length-1; i>=0; i--) {
+                let p = state.poops[i];
+                if(p.scale < 1) p.scale += 0.05;
+                
+                // 磁铁
+                if(state.level >= 5) {
+                    let d = Math.hypot(p.x - state.pig.x, p.y - state.pig.y);
+                    if(d < 300) {
+                        p.x += (state.pig.x - p.x) * 0.08;
+                        p.y += (state.pig.y - p.y) * 0.08;
+                    }
+                }
+
+                if(Math.hypot(p.x - state.pig.x, p.y - state.pig.y) < 80) {
+                    state.poops.splice(i, 1);
+                    state.score += 10;
+                    state.xp++;
+                    
+                    // 粒子特效
+                    for(let k=0; k<5; k++) {
+                        state.particles.push({
+                            x: p.x, y: p.y,
+                            vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15,
+                            life: 1, color: p.color
+                        });
+                    }
+
+                    if(state.xp >= state.maxXp) {
+                        state.level++; state.xp = 0; state.maxXp = Math.floor(state.maxXp*1.2);
+                        showMsg("LEVEL UP!");
+                        if(state.level === 21) playMusic(2);
+                    }
+                    updateUI();
                 }
             }
 
-            let hitR = 80 + state.level;
-            if(Math.hypot(p.x - state.pig.x, p.y - state.pig.y) < hitR) eat(p, i);
-        }
-    }
-
-    function eat(p, idx) {
-        state.poops.splice(idx, 1);
-        let val=1;
-        if(p.type === 'speed') { state.pig.buffs.speed = 300; showMsg("⚡ 加速!"); }
-        if(p.type === 'boom') { 
-            state.poops.forEach(o => {
-                if(Math.hypot(o.x-state.pig.x, o.y-state.pig.y) < 600) { o.x=state.pig.x; o.y=state.pig.y; }
-            });
-            showMsg("💥 炸裂!");
+            // 粒子更新
+            for(let i=state.particles.length-1; i>=0; i--) {
+                state.particles[i].x += state.particles[i].vx;
+                state.particles[i].y += state.particles[i].vy;
+                state.particles[i].life -= 0.05;
+                if(state.particles[i].life <= 0) state.particles.splice(i, 1);
+            }
         }
 
-        state.xp += val; state.score += 10;
-        if(state.xp >= state.maxXp) {
-            state.level++; state.xp = 0; state.maxXp = Math.floor(state.maxXp*1.2);
-            if(state.level===21) playMusic(2);
-            showMsg("LEVEL UP!");
-        }
-        document.getElementById('scoreVal').innerText = state.score;
-        document.getElementById('levelVal').innerText = `Lv.${state.level} ${getScene()}`;
-        document.getElementById('xpFill').style.width = `${(state.xp/state.maxXp)*100}%`;
-    }
+        function spawner() {
+            if(!state.active) return;
+            if(state.poops.length < 10 + state.level) {
+                let type = Math.random();
+                let color = "#8B5E3C";
+                if(type < 0.1) color = "gold"; // 简单的颜色标记
+                else if(type < 0.2) color = "red";
 
-    function spawner() {
-        if(!state.active) return;
-        let delay = 800;
-        if(state.rainMode) delay = 60;
-        setTimeout(() => { spawn(); spawner(); }, delay);
-    }
-
-    function spawn() {
-        if(state.poops.length > 50) return;
-        if(!state.rainMode && Math.random()<0.008) { state.rainMode=true; state.rainTimer=400; showMsg("💩 暴雨来袭!"); }
-        
-        let type='normal';
-        let r = Math.random();
-        if(r<0.05) type='speed'; else if(r<0.1) type='boom';
-
-        state.poops.push({
-            x: Math.random()*(G_W-100)+50, y: Math.random()*(G_H-100)+50,
-            type: type, scale: 0, float: Math.random()*100
-        });
-    }
-
-    function getScene() {
-        if(state.level <= 5) return 'farm';
-        if(state.level <= 10) return 'road';
-        if(state.level <= 15) return 'bikini';
-        if(state.level <= 20) return 'cotton';
-        return 'moon';
-    }
-
-    function showMsg(t) {
-        const toast = document.getElementById('toast');
-        toast.innerText = t;
-        toast.classList.add('show');
-        setTimeout(()=>toast.classList.remove('show'), 1500);
-    }
-
-    /* ================= 绝对安全的渲染函数 ================= */
-    function draw() {
-        let s = Math.min(canvas.width/G_W, canvas.height/G_H);
-        let dx = (canvas.width - G_W*s)/2;
-        let dy = (canvas.height - G_H*s)/2;
-
-        // 清空
-        ctx.fillStyle = "#000"; ctx.fillRect(0,0,canvas.width, canvas.height);
-
-        ctx.save();
-        ctx.translate(dx, dy); ctx.scale(s, s);
-        ctx.beginPath(); ctx.rect(0,0,G_W,G_H); ctx.clip();
-
-        const scene = getScene();
-        
-        // 1. 绘制背景 (安全模式)
-        let bgImg = IMAGES.bg[scene];
-        if(bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
-            ctx.drawImage(bgImg, 0, 0, G_W, G_H);
-        } else {
-            // ⚠️ 图片没加载出来时的兜底颜色
-            if(scene==='farm') ctx.fillStyle = "#78e08f";
-            else if(scene==='road') ctx.fillStyle = "#636e72";
-            else if(scene==='bikini') ctx.fillStyle = "#0984e3";
-            else if(scene==='cotton') ctx.fillStyle = "#ff9ff3";
-            else ctx.fillStyle = "#2f3640";
-            ctx.fillRect(0,0,G_W,G_H);
-            // 画网格表示地面
-            ctx.strokeStyle = "rgba(255,255,255,0.1)";
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            for(let i=0;i<G_W;i+=200) { ctx.moveTo(i,0); ctx.lineTo(i,G_H); }
-            for(let i=0;i<G_H;i+=200) { ctx.moveTo(0,i); ctx.lineTo(G_W,i); }
-            ctx.stroke();
+                state.poops.push({
+                    x: Math.random()*(G_W-100)+50, 
+                    y: Math.random()*(G_HEIGHT-100)+50,
+                    scale: 0, float: Math.random()*100,
+                    color: color
+                });
+            }
+            setTimeout(spawner, 500);
         }
 
-        // 2. 绘制物品 (屎)
-        state.poops.forEach(p => {
-            let hover = Math.sin((Date.now()/200)+p.float) * 5;
+        function getScene() {
+            if(state.level <= 5) return 'farm';
+            if(state.level <= 10) return 'road';
+            if(state.level <= 15) return 'bikini';
+            if(state.level <= 20) return 'cotton';
+            return 'moon';
+        }
+
+        function updateUI() {
+            document.getElementById('scoreVal').innerText = state.score;
+            document.getElementById('levelVal').innerText = `Lv.${state.level}`;
+            document.getElementById('xpFill').style.width = `${(state.xp/state.maxXp)*100}%`;
+        }
+
+        function showMsg(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 1500);
+        }
+
+        function draw() {
+            // 计算屏幕缩放
+            let s = Math.min(canvas.width/G_W, canvas.height/G_HEIGHT);
+            if(s === 0) s = 1; // 防错
+            let dx = (canvas.width - G_W*s)/2;
+            let dy = (canvas.height - G_HEIGHT*s)/2;
+
+            // 清空画布 (黑色底，防止没有背景图时全白)
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0,0,canvas.width, canvas.height);
+
             ctx.save();
-            ctx.translate(p.x, p.y + hover);
-            ctx.scale(p.scale, p.scale);
+            ctx.translate(dx, dy);
+            ctx.scale(s, s);
+            ctx.beginPath(); ctx.rect(0,0,G_W,G_HEIGHT); ctx.clip();
 
-            // 如果有图画图，没图画圆
-            if(IMAGES.poop && IMAGES.poop.complete && IMAGES.poop.naturalWidth !== 0) {
-                ctx.drawImage(IMAGES.poop, -40, -40, 80, 80);
+            const scene = getScene();
+            
+            // 1. 绘制背景 (如果图片没加载，画色块)
+            let bg = IMAGES.bg[scene];
+            if(bg && bg.complete && bg.naturalWidth !== 0) {
+                ctx.drawImage(bg, 0, 0, G_W, G_HEIGHT);
             } else {
-                // ⚠️ 兜底：画一个棕色的圆
-                ctx.fillStyle = (p.type==='speed'?'blue':(p.type==='boom'?'red':'#8B5E3C'));
-                ctx.beginPath(); ctx.arc(0,0,40,0,Math.PI*2); ctx.fill();
-                ctx.fillStyle = "white"; ctx.font = "20px Arial"; ctx.fillText("💩", -12, 8);
+                // 兜底背景色 (保证不黑屏)
+                ctx.fillStyle = (scene==='moon') ? "#2f3640" : "#78e08f";
+                ctx.fillRect(0,0, G_W, G_HEIGHT);
+            }
+
+            // 2. 绘制屎
+            state.poops.forEach(p => {
+                let hover = Math.sin((Date.now()/200)+p.float) * 5;
+                ctx.save();
+                ctx.translate(p.x, p.y + hover);
+                ctx.scale(p.scale, p.scale);
+
+                // 颜色滤镜
+                if(p.color === 'gold') ctx.filter = "brightness(1.5) sepia(1)";
+                if(p.color === 'red') ctx.filter = "hue-rotate(300deg)";
+
+                // 影子
+                ctx.fillStyle = "rgba(0,0,0,0.2)";
+                ctx.beginPath(); ctx.ellipse(0, 30, 30, 10, 0,0,Math.PI*2); ctx.fill();
+
+                if(IMAGES.poop.complete && IMAGES.poop.naturalWidth !== 0) {
+                    ctx.drawImage(IMAGES.poop, -40, -40, 80, 80);
+                } else {
+                    // 兜底：画一个棕色的圆
+                    ctx.fillStyle = "#8B5E3C";
+                    ctx.beginPath(); ctx.arc(0,0,35,0,Math.PI*2); ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // 3. 绘制猪
+            ctx.save();
+            ctx.translate(state.pig.x, state.pig.y);
+            
+            let pScale = 1 + (state.level * 0.05);
+            if(state.pig.faceLeft) ctx.scale(-pScale, pScale); else ctx.scale(pScale, pScale);
+
+            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.beginPath(); ctx.ellipse(0, 40, 50, 15, 0,0,Math.PI*2); ctx.fill();
+
+            if(IMAGES.pig.complete && IMAGES.pig.naturalWidth !== 0) {
+                ctx.drawImage(IMAGES.pig, -60, -50, 120, 100);
+            } else {
+                // 兜底：画一个粉色方块
+                ctx.fillStyle = "pink";
+                ctx.fillRect(-50, -40, 100, 80);
             }
             ctx.restore();
-        });
 
-        // 3. 绘制猪
-        ctx.save();
-        ctx.translate(state.pig.x, state.pig.y);
-        let pScale = 1 + (state.level * 0.05);
-        if(state.pig.faceLeft) ctx.scale(-pScale, pScale); else ctx.scale(pScale, pScale);
+            // 4. 粒子
+            state.particles.forEach(pt => {
+                ctx.globalAlpha = pt.life;
+                ctx.fillStyle = pt.color || "white";
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 8, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
 
-        // 如果有图画图，没图画方块
-        if(IMAGES.pig && IMAGES.pig.complete && IMAGES.pig.naturalWidth !== 0) {
-            ctx.drawImage(IMAGES.pig, -75, -60, 150, 120);
-        } else {
-            // ⚠️ 兜底：画一个粉色方块
-            ctx.fillStyle = "pink";
-            ctx.fillRect(-60, -50, 120, 100);
-            ctx.fillStyle = "black";
-            ctx.font = "20px Arial"; ctx.fillText("🐷", -12, 8);
-        }
-        
-        // 进化配件 (Canvas绘制)
-        if(state.level >= 10) { 
-            ctx.fillStyle = "black"; ctx.fillRect(-45, -12, 20, 10); ctx.fillRect(-20, -12, 20, 10);
-            ctx.beginPath(); ctx.moveTo(-25,-7); ctx.lineTo(-20,-7); ctx.stroke();
-        }
-        if(state.level >= 15) { 
-            ctx.fillStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(10,-20); ctx.lineTo(60,20); ctx.lineTo(60,60); ctx.lineTo(10,40); ctx.fill();
+            ctx.restore();
         }
 
-        ctx.restore();
-        ctx.restore();
-    }
-
-</script>
+    </script>
 </body>
 </html>
