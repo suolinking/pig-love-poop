@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pig Love Poop</title>
+    <title>Pig Love Poop - 完整修复版</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -139,6 +139,7 @@
             font-weight: 400; letter-spacing: 3px;
             z-index: 2;
             font-family: 'Fredoka One', sans-serif;
+            text-align: center;
         }
 
         .btn-start {
@@ -174,6 +175,29 @@
         .hidden { opacity: 0; pointer-events: none; }
         
         #loading-text { margin-top: 10px; color: #888; font-size: 12px; z-index: 2; }
+        
+        /* 升级提示 Toast */
+        .toast {
+            position: absolute;
+            top: 30%; left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            background: linear-gradient(135deg, #ff9ff3, #feca57);
+            padding: 20px 40px;
+            border-radius: 50px;
+            color: white;
+            font-size: 28px;
+            border: 5px solid #fff;
+            text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+            opacity: 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 20;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .toast.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        .toast-sub { font-size: 16px; margin-top: 5px; text-shadow: none; color: #444; background: rgba(255,255,255,0.5); padding: 2px 10px; border-radius: 10px;}
+
     </style>
 </head>
 <body>
@@ -195,17 +219,23 @@
             </div>
         </div>
 
+        <!-- 动态提示 -->
+        <div id="toast" class="toast">
+            <div id="toastTitle">LEVEL UP!</div>
+            <div id="toastSub" class="toast-sub">解锁新技能</div>
+        </div>
+
         <div id="start-screen">
             <div class="stars-bg"></div>
             <h1>pig love poop</h1>
-            <button class="btn-start" id="startBtn" onclick="startGame()" disabled>Loading...</button>
-            <div id="loading-text">正在加载资源...</div>
+            <button class="btn-start" id="startBtn" onclick="startGame()">START</button>
+            <div id="loading-text">资源加载中...</div>
         </div>
     </div>
 
     <script>
         /* =================================================================
-           1. 资源配置与加载 (使用外部文件路径)
+           1. 资源配置与加载
            ================================================================= */
         
         // 这里填写你在 assets 文件夹里的文件名
@@ -215,6 +245,11 @@
             bg_bikini: "assets/bg_bikini.png",
             bg_cotton: "assets/bg_cotton.png",
             bg_moon:   "assets/bg_moon.png",
+            icon_farm: "assets/icon_farm.png",
+            icon_road: "assets/icon_road.png",
+            icon_bikini: "assets/icon_bikini.png",
+            icon_cotton: "assets/icon_cotton.png",
+            icon_moon: "assets/icon_moon.png",
             music_1:   "assets/music_1.mp3",
             music_2:   "assets/music_2.mp3"
         };
@@ -233,25 +268,41 @@
             currentTrackId: 0
         };
 
+        // 简单的加载计数器
         let loadedCount = 0;
-        const totalAssets = 7; // 5 BGs + 2 Musics (Pig/Poop generated instantly)
+        // 需要加载的外部图片数量 (5背景 + 5图标 = 10)
+        // 音频是异步加载的，不阻塞开始按钮
+        const requiredImages = 10; 
 
         function checkLoad() {
             loadedCount++;
-            if(loadedCount >= totalAssets) {
-                document.getElementById('startBtn').innerText = "START";
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('loading-text').style.display = 'none';
-            }
+            // 如果不想等所有图片加载完也能玩，可以把这个判断条件放宽
+            // 这里做一个简单的延时模拟加载完成，或者直接开放按钮
         }
+        
+        // 强制开放按钮（防止图片加载失败导致无法开始）
+        setTimeout(() => {
+            document.getElementById('startBtn').innerText = "START";
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('loading-text').style.display = 'none';
+        }, 1000);
 
         function initAssets() {
             // 1. 加载图片
             ['farm','road','bikini','cotton','moon'].forEach(k => {
-                IMAGES[k] = new Image();
-                IMAGES[k].src = PATHS['bg_'+k];
-                IMAGES[k].onload = checkLoad;
-                IMAGES[k].onerror = () => { console.warn(`Failed to load ${k}`); checkLoad(); };
+                // 背景
+                IMAGES.bg = IMAGES.bg || {};
+                IMAGES.bg[k] = new Image();
+                IMAGES.bg[k].src = PATHS['bg_'+k];
+                IMAGES.bg[k].onload = checkLoad;
+                IMAGES.bg[k].onerror = () => { console.log('BG load skipped: ' + k); };
+
+                // 图标
+                IMAGES.icons = IMAGES.icons || {};
+                IMAGES.icons[k] = new Image();
+                IMAGES.icons[k].src = PATHS['icon_'+k];
+                IMAGES.icons[k].onload = checkLoad;
+                IMAGES.icons[k].onerror = () => { console.log('Icon load skipped: ' + k); };
             });
 
             // 2. 准备矢量图对象
@@ -270,13 +321,15 @@
             
             ['music_1', 'music_2'].forEach((key, idx) => {
                 fetch(PATHS[key])
-                    .then(response => response.arrayBuffer())
+                    .then(response => {
+                        if(!response.ok) throw new Error("Network response was not ok");
+                        return response.arrayBuffer();
+                    })
                     .then(arrayBuffer => AUDIO.ctx.decodeAudioData(arrayBuffer))
                     .then(audioBuffer => {
                         AUDIO.buffers[idx + 1] = audioBuffer;
-                        checkLoad();
                     })
-                    .catch(e => { console.warn("Audio load failed:", e); checkLoad(); });
+                    .catch(e => { console.log("Audio load skipped (local/cors):", e); });
             });
         }
 
@@ -300,7 +353,7 @@
             
             // 创建增益节点控制音量
             const gainNode = AUDIO.ctx.createGain();
-            gainNode.gain.value = 0.5; // 背景音乐音量减半，不吵闹
+            gainNode.gain.value = 0.5; 
 
             source.connect(gainNode);
             gainNode.connect(AUDIO.ctx.destination);
@@ -360,7 +413,7 @@
             level: 1,
             xp: 0,
             maxXp: 10,
-            pig: { x: G_WIDTH/2, y: G_HEIGHT/2, vx:0, vy:0, faceLeft: false },
+            pig: { x: G_WIDTH/2, y: G_HEIGHT/2, vx:0, vy:0, faceLeft: false, speedBuff:0, slowBuff:0, dizzyBuff:0 },
             poops: [],
             particles: [],
             rain: [], 
@@ -520,6 +573,8 @@
                     }
                 });
             }
+            // 特色物品
+            if(p.type === 'special') { scoreAdd = 200; val=5; }
 
             state.xp += val;
             state.score += scoreAdd;
@@ -532,9 +587,18 @@
         function levelUp() {
             state.level++;
             state.xp = 0;
-            state.maxXp = Math.floor(state.maxXp * 1.2);
+            state.maxXp = Math.floor(state.maxXp * 1.3);
             
-            if(state.level === 21) playMusic(2); // 切换到月球音乐
+            let msg = "变强了!";
+            if(state.level === 5) msg = "进化: 肥嘟嘟";
+            if(state.level === 6) msg = "新场景: 高速公路";
+            if(state.level === 10) msg = "进化: 墨镜潮猪";
+            if(state.level === 11) msg = "新场景: 比奇堡";
+            if(state.level === 15) msg = "进化: 超人神猪";
+            if(state.level === 16) msg = "新场景: 游乐园";
+            if(state.level === 21) { msg = "新场景: 月球"; playMusic(2); }
+
+            showToast("LEVEL UP!", msg);
         }
 
         function spawner() {
@@ -558,16 +622,21 @@
             if(!state.poopRainMode && Math.random() < 0.002) {
                 state.poopRainMode = true;
                 state.poopRainTimer = 400;
+                showToast("⛈️ 屎雨来袭!", "尽情狂吃吧！");
             }
 
             let type = 'normal';
             let r = Math.random();
+            
             if(r < 0.02) type = 'giant';
             else if(r < 0.07) type = 'speed';
             else if(r < 0.12) type = 'boom';
             else if(r < 0.17) type = 'gold';
             else if(r < 0.22) type = 'stinky';
             else if(r < 0.27) type = 'sticky';
+            
+            // 场景特色物品 (10%概率)
+            if(Math.random() < 0.1) type = 'special';
 
             state.poops.push({
                 x: Math.random()*(G_WIDTH-100)+50,
@@ -596,7 +665,13 @@
             }
         }
 
-        /* ================= 5. 渲染系统 ================= */
+        function showToast(title, sub) {
+            const t = document.getElementById('toast');
+            document.getElementById('toastTitle').innerText = title;
+            document.getElementById('toastSub').innerText = sub;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
 
         function getCurrentScene() {
             if(state.level <= 5) return 'farm';
@@ -614,11 +689,14 @@
             document.getElementById('xpFill').style.width = `${(state.xp/state.maxXp)*100}%`;
         }
 
+        /* ================= 5. 渲染系统 ================= */
+
         function draw() {
             let scale = Math.min(canvas.width/G_WIDTH, canvas.height/G_HEIGHT);
             let dx = (canvas.width - G_WIDTH*scale)/2;
             let dy = (canvas.height - G_HEIGHT*scale)/2;
 
+            // 黑色底
             ctx.fillStyle = "#000";
             ctx.fillRect(0,0,canvas.width, canvas.height);
 
@@ -629,14 +707,8 @@
 
             const scene = getCurrentScene();
 
-            // 1. 背景
-            if(IMAGES.bg[scene] && IMAGES.bg[scene].complete) {
-                ctx.drawImage(IMAGES.bg[scene], 0, 0, G_WIDTH, G_HEIGHT);
-            } else {
-                // 简单的颜色兜底，防止图片没加载时黑屏
-                ctx.fillStyle = scene === 'moon' ? '#2f3640' : '#78e08f';
-                ctx.fillRect(0,0, G_WIDTH, G_HEIGHT);
-            }
+            // 1. 背景绘制 (带兜底)
+            drawBackground(scene);
 
             // 2. 月球雷暴
             if(scene === 'moon' && state.lightningTimer > 0) {
@@ -644,17 +716,22 @@
                 ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
             }
 
-            // 3. 物品
+            // 3. 绘制场景特色大图标 (如果有)
+            drawSceneIcon(scene);
+
+            // 4. 物品
             state.poops.forEach(p => {
                 let img = IMAGES.poops[p.type] || IMAGES.poops.normal;
                 if(p.type === 'giant') img = IMAGES.poops.gold;
+                if(p.type === 'special' && IMAGES.icons[scene] && IMAGES.icons[scene].complete) {
+                    img = IMAGES.icons[scene];
+                }
 
                 let hover = Math.sin((Date.now()/200)+p.float) * 5;
                 ctx.save();
                 ctx.translate(p.x, p.y + hover);
                 ctx.scale(p.scale, p.scale);
                 
-                // 阴影
                 ctx.fillStyle = "rgba(0,0,0,0.2)";
                 ctx.beginPath(); ctx.ellipse(0, 35, 30, 10, 0,0,Math.PI*2); ctx.fill();
 
@@ -662,14 +739,13 @@
                 ctx.restore();
             });
 
-            // 4. 猪
+            // 5. 猪
             ctx.save();
             ctx.translate(state.pig.x, state.pig.y);
             let pScale = 1 + (state.level * 0.05);
             if(state.pig.faceLeft) ctx.scale(-pScale, pScale);
             else ctx.scale(pScale, pScale);
 
-            // 阴影
             ctx.fillStyle = "rgba(0,0,0,0.3)";
             ctx.beginPath(); ctx.ellipse(0, 45, 60, 15, 0,0,Math.PI*2); ctx.fill();
 
@@ -685,10 +761,9 @@
                 ctx.fillStyle = "#e74c3c";
                 ctx.beginPath(); ctx.moveTo(10, -20); ctx.lineTo(60, 20); ctx.lineTo(60, 60); ctx.lineTo(10, 40); ctx.fill();
             }
-
             ctx.restore();
 
-            // 5. 粒子
+            // 6. 粒子
             state.particles.forEach(pt => {
                 ctx.globalAlpha = pt.life;
                 ctx.fillStyle = pt.color;
@@ -696,7 +771,7 @@
             });
             ctx.globalAlpha = 1;
 
-            // 6. 屏幕特效
+            // 7. 屏幕特效
             const fx = document.getElementById('fx-layer');
             if(state.pig.dizzyBuff > 0) fx.className = 'dizzy';
             else if(state.lightningTimer > 0) fx.className = 'flash';
@@ -704,6 +779,43 @@
 
             ctx.restore();
         }
+
+        function drawBackground(scene) {
+            let img = IMAGES.bg[scene];
+            if(img && img.complete && img.naturalWidth !== 0) {
+                ctx.drawImage(img, 0, 0, G_WIDTH, G_HEIGHT);
+            } else {
+                // 兜底颜色背景
+                if(scene === 'farm') {
+                    ctx.fillStyle = "#78e08f"; ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
+                    ctx.fillStyle = "#5c4033"; ctx.beginPath(); ctx.ellipse(300, 500, 150, 60, 0,0,Math.PI*2); ctx.fill();
+                }
+                else if(scene === 'road') {
+                    ctx.fillStyle = "#57606f"; ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
+                    ctx.fillStyle = "#fff"; ctx.fillRect(G_WIDTH/2-10, 0, 20, G_HEIGHT);
+                }
+                else if(scene === 'bikini') {
+                    ctx.fillStyle = "#00a8ff"; ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
+                }
+                else if(scene === 'cotton') {
+                    ctx.fillStyle = "#ff9ff3"; ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
+                }
+                else { // moon
+                    ctx.fillStyle = "#2f3640"; ctx.fillRect(0,0,G_WIDTH,G_HEIGHT);
+                    ctx.fillStyle = "#7f8fa6"; ctx.beginPath(); ctx.arc(G_WIDTH/2, G_HEIGHT+600, 1000, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        function drawSceneIcon(scene) {
+            if(IMAGES.icons[scene] && IMAGES.icons[scene].complete && IMAGES.icons[scene].src.length > 50) {
+                ctx.save();
+                ctx.globalAlpha = 0.5; // 半透明背景装饰
+                ctx.drawImage(IMAGES.icons[scene], G_WIDTH - 500, 100, 400, 400);
+                ctx.restore();
+            }
+        }
+
     </script>
 </body>
 </html>
